@@ -30,10 +30,10 @@ module Core(
     // -----------------------------------IF-----------------------------///
     // PC Unit
     wire branch_ok, ex_jum, flush;
-    wire pcsrc = branch_ok | ex_jum;
+    wire pcsrc = branch_ok | jum; // ex_jum -> jum
     wire [31:0] pc4;
-    wire [31:0] alu_result; 
-    PC_Unit pc_unit(.clk(clk), .resetn(resetn), .pcsrc(pcsrc), .i_pc_target(alu_result), .o_pc4(pc4), .o_pc(o_pc));
+    wire [31:0] alu_result, pc_target; 
+    PC_Unit pc_unit(.clk(clk), .resetn(resetn), .pcsrc(pcsrc), .i_pc_target(pc_target), .o_pc4(pc4), .o_pc(o_pc));
     
     
     // IF-ID pipeline
@@ -56,7 +56,7 @@ module Core(
     wire [31:0] wb_write_data;
     // output
     wire [31:0] rd1, rd2;
-    Reg_File reg_file(.clk(~clk), .resetn(resetn), .rs1(rs1), .rs2(rs2), .rd(wb_rd), .reg_write(wb_reg_write), .rd1(rd1), .rd2(rd2), .write_data(wb_write_data));
+    Reg_File reg_file(.clk(clk), .resetn(resetn), .rs1(rs1), .rs2(rs2), .rd(wb_rd), .reg_write(wb_reg_write), .rd1(rd1), .rd2(rd2), .write_data(wb_write_data));
     
     
     // Immediate Decode
@@ -92,18 +92,25 @@ module Core(
     , .o_ex_load_signext(ex_load_signext));
    
     
+    wire a_lt_b, a_eq_b;
+    wire [31:0] in2;
+    // ex_rd2 -> rd2, ex_imm -> imm, ex_select_data_compare -> select_data_compare
+    Mux2to1 select_in2_compare(.a(rd2), .b(imm), .select(select_data_compare), .out(in2));
+    // ex_rd1 -> rd1, ex_compare_signed -> compare_signed
+    Compare_Unit compare_unit(.a(rd1), .b(in2), .compare_signed(compare_signed), .a_lt_b(a_lt_b), .a_eq_b(a_eq_b));
+    Check_Branch check_branch(.branch_type(branch_type), .is_branch(is_branch), .is_eq(a_eq_b), .is_lt(a_lt_b), .yes(branch_ok));
+    Full_Adder_32 calculate_pc_target(.a(id_pc), .b(imm), .c_in(1'b0), .c_out(), .sum(pc_target));  
     // ----------------------------------------------------EX-----------------------------------------//
    // Compare Unit
    // output
-   wire a_lt_b, a_eq_b;
-   wire [31:0] in2;
+   
    
    // Mux select in2 for Compare Unit
-   Mux2to1 select_in2_compare(.a(ex_rd2), .b(ex_imm), .select(ex_select_data_compare), .out(in2));
-   Compare_Unit compare_unit(.a(ex_rd1), .b(in2), .compare_signed(ex_compare_signed), .a_lt_b(a_lt_b), .a_eq_b(a_eq_b));
+   
+   
    
    // Check branch
-   Check_Branch check_branch(.branch_type(ex_branch_type), .is_branch(ex_is_branch), .is_eq(a_eq_b), .is_lt(a_lt_b), .yes(branch_ok));
+
     
    // ALU Unit
    // Mux 2 select in1 for ALU ex_rd1->fwd_alu_a, ex_rd2 -> fwd_alu_b
